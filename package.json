@@ -1,0 +1,14 @@
+{
+  "name": "minebeeper",
+  "version": "1.0.0",
+  "main": "main.js",
+  "dependencies": {
+    "express": "^4.17.1",
+    "socket.io": "^2.3.0"
+  },
+  "scripts": {
+    "start": "node main.js"
+  },
+  "author": "Serena Liu <serena12142@gmail.com>",
+  "description": "A mine sweeping game designed for the visually impaired. The game is guided by beeping sounds of different pitch that indicates the number of mines surrounding the selected cell."
+}

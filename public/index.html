@@ -1,0 +1,189 @@
+<head>
+	<meta name="viewport" content="width=device-width, height=device-height， initial-scale=1.0">
+	<title>Mine Beeper</title>
+</head>
+
+<body>
+<canvas id='screen' style='position:absolute; left:0px; top:0px;'>
+<img id='safeImg' src='img/safe.png'>
+<img id='mineImg' src='img/mine.png'>
+<img id='noneImg' src='img/none.png'>
+<img id='flagImg' src='img/flag.png'>
+<img id='wrongImg' src='img/wrong.png'>
+</canvas>
+<input id='enterName' type="hidden" autocomplete="off" style="position:absolute;"/>
+<button id="submitName" onclick="submitScore()" style="position:absolute;display:none;">Submit</button>
+<script src="js/menu.js"></script>
+<script src="js/game.js"></script>
+<script src="js/winLose.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+	const htmlCanvas=document.getElementById('screen');
+	const screen=htmlCanvas.getContext('2d');
+	const inputBox=document.getElementById("enterName");
+	const submitButton=document.getElementById("submitName");
+	
+	//creating a canvas that fits the browser
+	htmlCanvas.width=window.innerWidth;
+	htmlCanvas.height=window.innerHeight;
+	var centerX=window.innerWidth/2;
+	var centerY=window.innerHeight/1.9;
+	window.addEventListener('resize', resizeCanvas, false);
+	function resizeCanvas(){
+		htmlCanvas.width=window.innerWidth;
+		htmlCanvas.height=window.innerHeight;
+		centerX=window.innerWidth/2;
+		centerY=window.innerHeight/1.9;
+		if (gameSize!={}){
+			gameSize.size=Math.floor(Math.min(window.innerWidth/(gameSize.column*1.2),window.innerHeight/(gameSize.row*1.2)));
+		}
+	}
+	function clearCanvas(){
+		screen.fillStyle = "rgb(255,255,255)";
+		screen.fillRect(0, 0, window.innerWidth, window.innerHeight);
+	}
+	
+
+	//images and colors
+	const safeImg=document.getElementById('safeImg');
+	const mineImg=document.getElementById('mineImg');
+	const noneImg=document.getElementById('noneImg');
+	const flagImg=document.getElementById('flagImg');
+	const wrongImg=document.getElementById('wrongImg');
+	const numberColor=["","rgb(1,0,254)","rgb(1,127,1)","rgb(254,0,0)","rgb(1,0,128)","rgb(129,1,2)","rgb(0,128,129)","rgb(0,0,0)","rgb(128,128,128)",];
+	//sounds for: win, lose, succeed, fail, flag, unflag
+	const winSound = new Audio();
+	winSound.src = "audio/win.wav";
+	winSound.volume=1/3;
+	const loseSound = new Audio();
+	loseSound.src = "audio/lose.wav";
+	loseSound.volume=1/3;
+	const succeedSound = new Audio();
+	succeedSound.src = "audio/succeed.wav";
+	succeedSound.volume=1/6;
+	const failSound = new Audio();
+	failSound.src = "audio/fail.wav";
+	failSound.volume=1/5;
+	const flagSound = new Audio();
+	flagSound.src = "audio/flag.wav";
+	flagSound.volume=1/2;
+	const unflagSound = new Audio();
+	unflagSound.src = "audio/unflag.wav";
+	unflagSound.volume=1/2;
+	const clickSound = new Audio();
+	clickSound.src = "audio/click.wav";
+	clickSound.volume=1/4;
+
+
+	//game constants
+	const socket=io();
+	var stage="menu", level='easy', blind=true;
+	var gameSize={}, gameMap=[];
+	var mouse={x:0,y:0,clicked:false,left:false,right:false,doubleClick:false};
+	var key={up:false,down:false,left:false,right:false};
+	var highscore=[];
+
+	//actual game
+	const menu=setInterval(displayMenu,40);
+	const game=setInterval(displayGame,40);
+	const winLose=setInterval(displayWinLose,40);
+
+
+	//using keyboard
+	document.onkeyup=function(event){
+		const key=event.keyCode;
+		if (gameSize.blind && key>=48 && key<=56){
+			playNote(128+(key-48)*64,100);
+		}
+	}
+
+
+	//using mouse
+	document.onmousemove=function(event){
+		mouse.x=event.clientX;
+		mouse.y=event.clientY;
+	}
+	document.onmousedown=function(event){
+		mouse.x=event.clientX;
+		mouse.y=event.clientY;
+		if (event.button==0){
+			mouse.left=true;
+		}else if (event.button==2){
+			mouse.right=true;
+		}
+	}
+	document.onmouseup=function(event){
+		mouse.clicked=true;
+		mouse.x=event.clientX;
+		mouse.y=event.clientY;
+	}
+	document.addEventListener( "contextmenu", function(event) {
+		event.preventDefault(); 
+  	});
+	document.addEventListener('dblclick', function (event) {
+  		mouse.clicked=true;
+		mouse.doubleClick=true;
+		mouse.x=event.clientX;
+		mouse.y=event.clientY;
+	});
+
+	
+	//touch on mobile devices
+	document.addEventListener('touchend', function (event) {
+		mouse.clicked=true;
+		mouse.left=true;
+		mouse.x=event.changedTouches[0].clientX;
+		mouse.y=event.changedTouches[0].clientY;
+	});
+
+
+	//play sound by frequency (hz) and duration (ms)
+	function playNote(frequency, duration) {
+		const audioContext = new AudioContext();
+
+		const gainNode = audioContext.createGain();
+		gainNode.gain.value=1/10;
+		gainNode.connect(audioContext.destination);
+
+		const oscillator = audioContext.createOscillator();
+  		oscillator.type = 'square';
+  		oscillator.frequency.value = frequency;
+  		oscillator.connect(gainNode);
+  		oscillator.start();
+
+  		setTimeout(function(){
+      			oscillator.stop();
+     		}, duration);
+	}
+	
+	//registering highscores
+	function checkScore(){
+		socket.emit("highscore",{blind:gameSize.blind,level:gameSize.level});
+		const time=Math.floor((gameSize.endTime-gameSize.startTime)/1000);
+		if (time<highscore[4].score || highscore[4].score==-1){
+			return true;
+		}else{
+			return false;
+		}
+	}	
+	function submitScore(){
+		if (inputBox.value!=""){
+			const time=Math.floor((gameSize.endTime-gameSize.startTime)/1000);
+			var name=inputBox.value;
+			if (name.length>9){
+				name=name.slice(0,9);
+			}
+			inputBox.value="";
+			inputBox.type="hidden";
+			submitButton.style.display="none";
+			gameSize.submitted=true;
+			socket.emit("newscore", {name:name,score:time,blind:gameSize.blind,level:gameSize.level});
+		}
+	}
+	
+	socket.on("highscore",function(data){
+		highscore=data;
+	});
+	
+</script>
+</body>
